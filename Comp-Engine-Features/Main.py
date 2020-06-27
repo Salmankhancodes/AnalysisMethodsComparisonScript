@@ -11,11 +11,10 @@ import seaborn as sns
 import sys
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-warnings.filterwarnings("ignore",category=RuntimeWarning)
-warnings.filterwarnings("ignore",category=UserWarning)
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 print("*** Done ***")
-
-
 
 Alltimeseries = []
 missing = []
@@ -36,26 +35,22 @@ hctsa = pd.read_csv('hctsa_datamatrix.csv')
 keywords = pd.read_csv('hctsa_features.csv')
 
 
-
 def PassingTimeseriesToNewFeature(Alltimeseries):
-
-   ###  Opt for zscoring befor timeseries ####
+    ###  Opt for zscoring befor timeseries ####
 
     to_zscore = input("Want timeseries to be z-scored before passing through your feature ? (y/n) : \n ").lower()
 
+    New_feature_vector = []  ###### to store value generated for each timeseries
 
-    New_feature_vector=[]    ###### to store value generated for each timeseries
+    Invalid_Ts = []  #####  to store index of time series that does not perform well
 
-    Invalid_Ts=[]           #####  to store index of time series that does not perform well
-
-
-######   for processing z-scored timeseries ##########
+    ######   for processing z-scored timeseries ##########
 
     if to_zscore == 'y':
-        for i in range(len(Alltimeseries)):
+        for i in tqdm(range(len(Alltimeseries))):
             z_timeseries = pd.DataFrame(Alltimeseries[i]).apply(zscore)
             try:
-                featurevalue=getattr(UserFunction,functionname)(z_timeseries.values)
+                featurevalue = getattr(UserFunction, functionname)(z_timeseries.values)
                 New_feature_vector.append(featurevalue)
             except AttributeError as A:
                 print(A)
@@ -68,9 +63,9 @@ def PassingTimeseriesToNewFeature(Alltimeseries):
                 Invalid_Ts.append(i)
 
 
-#########   for processing raw timeseries  #################
+    #########   for processing raw timeseries  #################
     elif to_zscore == 'n':
-        for i in range(len(Alltimeseries)):
+        for i in tqdm(range(len(Alltimeseries))):
             try:
                 featurevalue = getattr(UserFunction, functionname)(Alltimeseries[i])
                 New_feature_vector.append(featurevalue)
@@ -89,27 +84,26 @@ def PassingTimeseriesToNewFeature(Alltimeseries):
         print("Wrong Input")
         sys.exit()
 
+    ##############   for handling too many Nan values  ############
 
-##############   for handling too many Nan values  ############
-
-
-    if int(pd.DataFrame(New_feature_vector).isna().sum())>50:
+    if int(pd.DataFrame(New_feature_vector).isna().sum()) > 50:
         print("Too many Nan Values")
         sys.exit()
 
+    if sum(New_feature_vector) == 0:
+        print("Feature vector seems to be inappropriate .\nPlease re-check function Try without zscore")
+        sys.exit()
 
-
-   #####   return feature vector and indexes of invalid time series   ###########
-    return New_feature_vector,Invalid_Ts
-
+    #####   return feature vector and indexes of invalid time series   ###########
+    return New_feature_vector, Invalid_Ts
 
 
 #############  function for removing column having more missing values than threshold  ############
 
 
-def CheckMissing(featurematrix,threshold):
+def CheckMissing(featurematrix, threshold):
     for i in range(len(featurematrix.columns)):
-        if (featurematrix.iloc[:,i].isna().sum()*100/featurematrix.iloc[:,i].shape[0])>threshold:
+        if (featurematrix.iloc[:, i].isna().sum() * 100 / featurematrix.iloc[:, i].shape[0]) > threshold:
             missing.append(featurematrix.columns[i])
         else:
             final.append(i)
@@ -120,32 +114,30 @@ def CheckMissing(featurematrix,threshold):
     return final
 
 
-
 #####################   for comparing feature vector with each column of data matrix   ###############
 
-def Comparison_With_Matrix(New_feature_vector,finalfeatures):
-    alpha=0.05
-    New_feature_vector=pd.DataFrame(New_feature_vector)
+def Comparison_With_Matrix(New_feature_vector, finalfeatures):
+    alpha = 0.05
+    New_feature_vector = pd.DataFrame(New_feature_vector)
 
     ##############   calculating total Nan values in feature vector ##################
-    nan_fvector=int(New_feature_vector.isna().sum())
-    correlatedfeatures=[]
-    for i in finalfeatures:
-        eachfeature=[]
+    nan_fvector = int(New_feature_vector.isna().sum())
+    correlatedfeatures = []
+    for i in tqdm(finalfeatures):
+        eachfeature = []
 
         ############  if sum of nan values with column and featurevector less than 50  #########
 
-        if (hctsa.iloc[:,i].isna().sum()+nan_fvector)<50:
+        if (hctsa.iloc[:, i].isna().sum() + nan_fvector) < 50:
             ####  corr between columns and omitting bad pairs  #############
-            coef, p = spearmanr(hctsa.iloc[:,i],New_feature_vector.values,nan_policy="omit")
+            coef, p = spearmanr(hctsa.iloc[:, i], New_feature_vector.values, nan_policy="omit")
             if p < alpha:
+                ####  storing details of bestmatches in list ##########
 
-        ####  storing details of bestmatches in list ##########
-
-                eachfeature=[hctsa.columns[i],p,abs(coef),i,keywords.iloc[i:i+1,2].values,coef]
+                eachfeature = [hctsa.columns[i], p, abs(coef), i, keywords.iloc[i:i + 1, 2].values, coef]
                 correlatedfeatures.append(eachfeature)
     BestMatches = sorted(correlatedfeatures, key=itemgetter(2))[::-1]
-#######  return sorted bestmatches list of lists ###########
+    #######  return sorted bestmatches list of lists ###########
     return BestMatches
 
 
@@ -153,31 +145,30 @@ def Comparison_With_Matrix(New_feature_vector,finalfeatures):
 
 def visualization(BestMatches, New_feature_vector):
     ######  creating dataframe of pairwise correlation  ####
-    PairWise=pd.DataFrame()
+    PairWise = pd.DataFrame()
 
     ######### appending user's feature vector to pairwise datframe ####
-    PairWise[functionname]=New_feature_vector
+    PairWise[functionname] = New_feature_vector
     New_feature_vector = pd.DataFrame(New_feature_vector)
 
     print("\n")
 
-
     #####   opt for raw based scatter plot or rank based   #######
 
-
-    PlotType=input(" Plot should be on 'Raw' values or 'Rank' based ?\n (rw/rn)").lower()
-
+    PlotType = input(" Plot should be on 'Raw' values or 'Rank' based ?\n (rw/rn)").lower()
 
     ########   rank based scatter plot   ##########
 
-    if PlotType=='rn':
+    if PlotType == 'rn':
         plt.figure(figsize=(40, 30))
         for i in range(len(BestMatches[:10])):
+            ### plotting all plots on same page #####
             plt.subplot(4, 4, i + 1)
+            ##### Scatter plot size adjustment  #######
             plt.subplots_adjust(left=0.07, bottom=0.00, right=0.94, top=0.92, wspace=0.35, hspace=0.68)
             plt.scatter(hctsa.iloc[:, BestMatches[i][3]].rank(), New_feature_vector.rank())
             PairWise[BestMatches[i][0]] = hctsa.iloc[:, BestMatches[i][3]]
-            plt.title(f"Correlation = {BestMatches[i][2]}",fontsize=10)
+            plt.title(f"Correlation = {BestMatches[i][2]}", fontsize=10)
             plt.xlabel(BestMatches[i][0])
             plt.ylabel(functionname)
         plt.show()
@@ -185,15 +176,17 @@ def visualization(BestMatches, New_feature_vector):
 
     ########   raw based scatter plot   ##########
 
-
-    elif PlotType=='rw':
+    elif PlotType == 'rw':
         plt.figure(figsize=(40, 30))
-        plt.subplots_adjust(left=0.07,bottom=0.00,right=0.94,top=0.92,wspace=0.35,hspace=0.68)
+
         for i in range(len(BestMatches[:10])):
+            ### plotting all plots on same page #####
             plt.subplot(4, 4, i + 1)
-            plt.scatter(hctsa.iloc[:,BestMatches[i][3]], New_feature_vector)
+            ##### Scatter plot size adjustment  #######
+            plt.scatter(hctsa.iloc[:, BestMatches[i][3]], New_feature_vector)
+            plt.subplots_adjust(left=0.07, bottom=0.00, right=0.94, top=0.92, wspace=0.35, hspace=0.68)
             PairWise[BestMatches[i][0]] = hctsa.iloc[:, BestMatches[i][3]]
-            plt.title(f"Correlation = {BestMatches[i][2]}",fontsize=10)
+            plt.title(f"Correlation = {BestMatches[i][2]}", fontsize=10)
             plt.xlabel(BestMatches[i][0])
             plt.ylabel(functionname)
         plt.show()
@@ -206,10 +199,8 @@ def visualization(BestMatches, New_feature_vector):
         sys.exit()
     ############    Reordering the resuult with Linkage clustering  ########
 
-
-    pairwise_corr=PairWise.corr(method="spearman").abs()
-    g=sns.clustermap(pairwise_corr,method="complete",annot=True,linewidth=0.5)
-
+    pairwise_corr = PairWise.corr(method="spearman").abs()
+    g = sns.clustermap(pairwise_corr, method="complete", annot=True, linewidth=0.5)
 
     #######      Highlighting user's row and column in pairwise correlation with patch    ########
 
@@ -228,25 +219,18 @@ def visualization(BestMatches, New_feature_vector):
     plt.show()
 
 
-
-
 #######   main function    ##########3
 
 if __name__ == '__main__':
-
-
     #### taking user's function name as input  ########
-
 
     functionname = input("Enter Function name (same as defined in your .py file) -:  ")
 
-
     ###  calling function for generating feature vector ########
 
-    New_feature_vector,Invalid_Ts=PassingTimeseriesToNewFeature(Alltimeseries)
+    New_feature_vector, Invalid_Ts = PassingTimeseriesToNewFeature(Alltimeseries)
     print(New_feature_vector)
     print(" *** Feature vector generated ***")
-
 
     print("Removing columns Having more than 70% missing values.....\n")
 
@@ -260,25 +244,20 @@ if __name__ == '__main__':
 
     hctsa = hctsa.drop(hctsa.index[Invalid_Ts]).reset_index(drop=True)
 
-
-
     ###  calling function for finding correlation with  feature vector ########
-    BestMatches=Comparison_With_Matrix(New_feature_vector,finalfeatures)
-
+    BestMatches = Comparison_With_Matrix(New_feature_vector, finalfeatures)
 
     #####  displaying all rows and columns  #####
     pd.set_option('display.max_columns', None)
     pd.set_option('display.max_rows', None)
 
-
-##########   Creating dataframe for All results and saving in CSV file   #######
+    ##########   Creating dataframe for All results and saving in CSV file   #######
     DATAFRAME = pd.DataFrame(BestMatches)
     DATAFRAME.columns = ['Name', 'p-value', 'Corr', 'Column-Id', 'Keywords', 'Signed corr value']
     DATAFRAME.to_csv('matching data.csv')
 
-
     #########   printing 10 best matches   ######
     print(DATAFRAME[:10])
 
-############ visualization with scatter plot and Pairwise correlation  #####
+    ############ visualization with scatter plot and Pairwise correlation  #####
     visualization(BestMatches, New_feature_vector)
